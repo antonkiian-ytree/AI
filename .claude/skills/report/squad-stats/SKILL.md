@@ -237,4 +237,41 @@ High - N
 
 ## Output
 
-Once all metrics are collected, produce the final report in the template format above.
+Once all metrics are collected, produce the final report.
+
+### Posting to Slack
+
+Post the report as a **draft** in the team's stats thread using `slack_send_message_draft` with `thread_ts` of the parent message.
+
+**Format** — use structured markdown (not code blocks, not plain bullet points):
+
+```
+*{Month} stat. {Squad}* 🌙
+
+*━━━ Tech Delivery Stats (Application Development) ━━━*
+
+▸ Squad Predictability — `X%`
+▸ Squad Releases — `N`
+▸ Cycle time — `N days`
+▸ Tech OKRs completion — `X% (by tickets) / Y% (by story points)`
+
+*━━━ Tech Operations Stats ━━━*
+
+▸ Operational Standards — `X%`
+▸ Open tech debt tickets — `N`
+▸ Closed tech debts — `N`
+
+*━━━ Production Issues — `N` total ━━━*
+
+▸ Software bugs — `X% (N)`
+▸ Questions / product issues — `X% (N)`
+
+*━━━ Vulnerabilities ━━━*
+
+▸ Critical — `N`
+▸ High — `N`
+```
+
+**Channel:** `#tech-leadership` (`C03NQGVEQFK`)
+
+Use `slack_send_message_draft` (not `slack_send_message`) so the user can review before sending. Always post as a thread reply to the monthly stats parent message.
