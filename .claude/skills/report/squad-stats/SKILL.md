@@ -17,10 +17,10 @@ Tech Delivery Stats (Application Development)
 Squad Predictability - X%
 Squad Releases - N
 Cycle time - N days
-Tech OKRs completion - X%
+Tech OKRs completion - X% (by tickets) / Y% (by story points)
 
 Tech Operations Stats
-Operational Standards - % of domain scorecard deployed - X% (N out of M)
+Operational Standards - % of domain scorecard deployed - X%
 App Dev. Technical Debt (total number of tickets open and closed in month)
 Total number of open technical debt tickets - N
 Closed tech debts - N
@@ -42,6 +42,14 @@ Parse the user's request for:
 
 If missing, ask.
 
+## Global Rules
+
+- **Exclude subtasks from all Jira queries.** Always add `AND issuetype not in subtaskIssueTypes()` to every JQL query. Subtasks inflate counts — only parent tickets matter.
+- **Jira REST API:** The old `GET /rest/api/3/search` is deprecated. Use `POST /rest/api/3/search/jql` with JSON body `{"jql":"...","fields":[...],"maxResults":N}`.
+- **Auth for direct API calls:** Use the Jira API token stored in env var `JIRA_API_TOKEN` with the user's Atlassian email. Use `curl` with basic auth (`email:token`) against `https://yofiworld.atlassian.net/rest/api/3`.
+- **Story points field:** `customfield_10211` ("Story point estimate").
+- **Each squad has its own workflow statuses.** Always discover Done statuses by checking one resolved issue's transitions before querying.
+
 ## Metric Collection
 
 Work through each metric **one at a time**, confirming values with the user before moving on.
@@ -61,11 +69,11 @@ Work through each metric **one at a time**, confirming values with the user befo
 
 **Example (July = 31 days):**
 
-| Sprint      | Sprint dates    | Days in July | Weight | Committed | Completed | Predictability |
-|-------------|-----------------|--------------|--------|-----------|-----------|----------------|
-| Q2 Sprint 7 | Jun 22 – Jul 6  | 6            | 6/31   | 154.5     | 152       | 98.4%          |
-| Q3 Sprint 1 | Jul 6 – Jul 20  | 14           | 14/31  | 149       | 111       | 74.5%          |
-| Q3 Sprint 2 | Jul 20 – Jul 31 | 11           | 11/31  | 157       | 143.5     | 91.4%          |
+| Sprint | Sprint dates | Days in July | Weight | Committed | Completed | Predictability |
+|--------|-------------|-------------|--------|-----------|-----------|---------------|
+| Q2 Sprint 7 | Jun 22 – Jul 6 | 6 | 6/31 | 154.5 | 152 | 98.4% |
+| Q3 Sprint 1 | Jul 6 – Jul 20 | 14 | 14/31 | 149 | 111 | 74.5% |
+| Q3 Sprint 2 | Jul 20 – Jul 31 | 11 | 11/31 | 157 | 143.5 | 91.4% |
 
 Weighted = `(6/31 × 98.4) + (14/31 × 74.5) + (11/31 × 91.4)` = **85%**
 
@@ -77,7 +85,7 @@ Round to nearest whole percent.
 
 **JQL to count unique fixVersions released in the month:**
 ```
-project = {PROJECT} AND fixVersion in releasedVersions() AND resolved >= "{YYYY-MM-01}" AND resolved <= "{YYYY-MM-DD}"
+project = {PROJECT} AND fixVersion in releasedVersions() AND resolved >= "{YYYY-MM-01}" AND resolved <= "{YYYY-MM-DD}" AND issuetype not in subtaskIssueTypes()
 ```
 
 Count the **unique fixVersion names** from the results.
@@ -86,17 +94,13 @@ Count the **unique fixVersion names** from the results.
 
 **Source:** Jira issue changelogs + GitHub PR creation dates, via direct REST API.
 
-**Auth:** Use the Jira API token stored in env var `JIRA_API_TOKEN` with the user's Atlassian email. Use `curl` with basic auth (`email:token`) against `https://yofiworld.atlassian.net/rest/api/3`.
-
-**Important:** The old `/rest/api/3/search` endpoint is deprecated. Use `POST /rest/api/3/search/jql` with JSON body `{"jql":"...","fields":[...],"maxResults":N}`.
-
 **Definition:** Time from **first PR created** for a ticket to **Done status transition** (calendar days). If no PR exists, fall back to **In Progress → Done** status transitions. If neither exists, skip the issue.
 
 **Steps:**
 
 1. **Get issues resolved in the month:**
    ```
-   JQL: project = {PROJECT} AND statusCategory = Done AND resolved >= "{YYYY-MM-01}" AND resolved <= "{YYYY-MM-DD}" AND issuetype in (Story, Task, Bug)
+   JQL: project = {PROJECT} AND statusCategory = Done AND resolved >= "{YYYY-MM-01}" AND resolved <= "{YYYY-MM-DD}" AND issuetype in (Story, Task, Bug) AND issuetype not in subtaskIssueTypes()
    Fields: key, customfield_10211 (Story point estimate)
    ```
 
@@ -125,7 +129,7 @@ Count the **unique fixVersion names** from the results.
 
 1. Query all issues in the current quarter's sprints:
    ```
-   JQL: project = {PROJECT} AND sprint in ("{PROJECT} {YYYY}-Q{N} Sprint 1", "{PROJECT} {YYYY}-Q{N} Sprint 2", ...) AND issuetype in (Story, Task, Bug)
+   JQL: project = {PROJECT} AND sprint in ("{PROJECT} {YYYY}-Q{N} Sprint 1", "{PROJECT} {YYYY}-Q{N} Sprint 2", ...) AND issuetype in (Story, Task, Bug) AND issuetype not in subtaskIssueTypes()
    Fields: key, status, customfield_10211 (Story point estimate)
    ```
 
@@ -151,14 +155,14 @@ Format: `X%`
 
 **Steps:**
 
-1. **Open tech debt tickets** (not completed):
+1. **Open tech debt tickets** (not completed, exclude subtasks):
    ```
-   JQL: project = {PROJECT} AND labels = tech-debt AND statusCategory != Done
+   JQL: project = {PROJECT} AND labels = tech-debt AND statusCategory != Done AND issuetype not in subtaskIssueTypes()
    ```
 
-2. **Closed tech debts in the month:**
+2. **Closed tech debts in the month** (exclude subtasks):
    ```
-   JQL: project = {PROJECT} AND labels = tech-debt AND statusCategory = Done AND resolved >= "{YYYY-MM-01}" AND resolved <= "{YYYY-MM-DD}"
+   JQL: project = {PROJECT} AND labels = tech-debt AND statusCategory = Done AND resolved >= "{YYYY-MM-01}" AND resolved <= "{YYYY-MM-DD}" AND issuetype not in subtaskIssueTypes()
    ```
 
 **Output:**
@@ -181,12 +185,12 @@ Closed tech debts - N
 
 3. **For each issue, search for linked Jira tickets** in the thread (look for `{PROJECT}-XXXX` links). Also search Jira for tickets with `[Production issue]` or `[Production-issue]` in summary created during the month:
    ```
-   JQL: project = {PROJECT} AND (summary ~ "Production issue" OR summary ~ "production issue" OR issuetype = Bug) AND created >= "{YYYY-MM-01}" AND created <= "{YYYY-MM-DD}"
+   JQL: project = {PROJECT} AND (summary ~ "Production issue" OR summary ~ "production issue" OR issuetype = Bug) AND created >= "{YYYY-MM-01}" AND created <= "{YYYY-MM-DD}" AND issuetype not in subtaskIssueTypes()
    ```
 
 4. **Classify each issue:**
-   - **Has Jira ticket → check issue type AND status:**
-     - Status = Completed or RELEASED → **software bug** (regardless of type — Bug, Task, Investigation)
+   - **Has Jira ticket → check status:**
+     - Status = Completed or RELEASED → **software bug** (regardless of issue type)
      - Status = Closed → **investigation** (exclude from total — investigated and dismissed)
    - **No Jira ticket → question/product issue**
 
@@ -214,13 +218,21 @@ App Dev: Production issues total - N
 - `var-squad` = squad name (e.g., `luna`)
 - `var-service` = `$__all`
 
-Use the Grafana skill to query metrics, or ask the user to open the dashboard with the squad filter and share the counts.
+**Prometheus queries** (can be run directly via Grafana API):
+```
+# Critical
+(count(sum(trivy:vulnerability:overview{severity="Critical",vuln_id=~"CVE.*",namespace=~"business-application",k8s_label_k8_y_tree_org_uk_owning_team=~"{SQUAD}"}) by (namespace, resource_name, vuln_id)) or on() vector(0)) + (count(sum(trivy_exposedsecrets_info{severity="Critical",namespace=~"business-application",k8s_label_k8_y_tree_org_uk_owning_team=~"{SQUAD}"}) by (namespace, resource_name, secret_rule_id, secret_target)) or on() vector(0))
+
+# High — same query with severity="High"
+```
+
+Use the Grafana skill or `curl` with a session cookie against `{GRAFANA_BASE}/api/datasources/proxy/uid/{METRICS_UID}/api/v1/query`.
 
 **Output:**
 ```
 Critical and high vulnerabilities:
 Critical - N
-High - N (note if fixed on PreProd but not yet delivered)
+High - N
 ```
 
 ## Output
