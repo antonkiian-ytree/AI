@@ -12,6 +12,14 @@ description: >
 Promotes services to production when the only changes between preprod and production are automated
 dependency updates from ytree-admin (Renovate-style batch release).
 
+## Pre-flight
+
+Before making any changes in the argocd-monorepo, **always** switch to the main branch and pull latest:
+
+```bash
+git checkout main && git pull origin main
+```
+
 ## Input
 
 The user provides a table of services with their preprod and production tags, e.g.:
@@ -116,3 +124,4 @@ No Jira tickets — automated dependency updates only.
 - If a `release/luna-renovation` branch already exists on the remote, ask the user before proceeding
 - Run compare link gathering in parallel (use Agent tool) for speed
 - The PR description has two parts: the overview table first, then the standard release description with compare links
+- **Working directory:** use `repos/argocd-monorepo` (relative to project root) for all argocd-monorepo operations. If it doesn't exist, fall back to `/Users/antonkiian/projects/ytree/argocd-monorepo`

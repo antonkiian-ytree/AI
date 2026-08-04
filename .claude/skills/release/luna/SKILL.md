@@ -20,6 +20,14 @@ Parse the user's request for:
 
 If missing, check recent Jira releases or ask the user.
 
+## Pre-flight
+
+Before making any changes in the argocd-monorepo, **always** switch to the main branch and pull latest:
+
+```bash
+git checkout main && git pull origin main
+```
+
 ## Workflow
 
 ### 1. Determine the release ID
@@ -41,6 +49,14 @@ JQL: fixVersion = "LUNA-R-{NNN}"
 ```
 
 Collect ticket keys, summaries, and links for the PR description.
+
+**For each story ticket, also fetch its subtasks:**
+
+```
+JQL: parent IN (LUNA-XXXX, LUNA-YYYY) ORDER BY key ASC
+```
+
+Subtasks are listed under their parent in the "Promote to production" section (see body format below).
 
 ### 3. Verify and bump tags
 
@@ -67,18 +83,37 @@ Extract PR numbers from commit messages (`(#NNN)`), then get details:
 
 ```bash
 gh pr view {number} --repo y-tree-limited/{service} \
-  --json title,number,author,mergedAt \
-  --jq '"\(.number) | \(.title) | \(.author.login) | \(.mergedAt)"'
+  --json title,number,author,mergedAt,headRefName \
+  --jq '"\(.number) | \(.title) | \(.author.login) | \(.mergedAt) | \(.headRefName)"'
 ```
 
 **Order PRs by merged timestamp (oldest first).**
 
 Run compare gathering in parallel (use Agent tool) for speed.
 
-### 5. Classify PRs
+### 5. Choose the minimum tag and classify PRs
+
+**Promote to the minimum tag that includes all release-related PRs.** If unrelated PRs appear
+after the last release PR in the tag sequence, use the earlier tag to exclude them. Only include
+unrelated PRs when they are sandwiched between release PRs (i.e., they cannot be skipped).
+
+Example — skip when possible:
+```
+v0.2.25 = #355 (LUNA-6498)  ← release
+v0.2.26 = #356 (LUNA-6498)  ← release
+v0.2.27 = #358 (LUNA-6498)  ← release ← promote to this tag
+v0.2.28 = #359 (VG-6485)    ← unrelated, skip by using v0.2.27
+```
+
+Example — cannot skip:
+```
+v0.2.26 = #356 (LUNA-6498)  ← release
+v0.2.27 = #359 (VG-6485)    ← unrelated, but sandwiched
+v0.2.28 = #358 (LUNA-6498)  ← release ← must promote to v0.2.28, #359 included
+```
 
 For each PR in the compare range:
-- **Related to release** — PR title contains a Jira ticket key from the release
+- **Related to release** — PR title or branch name contains a Jira ticket key from the release
 - **Unrelated** — everything else (deps updates, refactors, etc.)
 
 Group unrelated PRs by author for the approval checklist.
@@ -106,23 +141,31 @@ git push -u origin release/LUNA-R-{NNN}
 
 ## Promote to production:
 - [LUNA-XXXX](https://yofiworld.atlassian.net/browse/LUNA-XXXX) Ticket summary
+  -- [LUNA-AAAA](https://yofiworld.atlassian.net/browse/LUNA-AAAA) Subtask summary
+  -- [LUNA-BBBB](https://yofiworld.atlassian.net/browse/LUNA-BBBB) Subtask summary
 - [LUNA-YYYY](https://yofiworld.atlassian.net/browse/LUNA-YYYY) Ticket summary
+  -- [LUNA-CCCC](https://yofiworld.atlassian.net/browse/LUNA-CCCC) Subtask summary
 
 ## Compare Changes
 - [{service}](https://github.com/y-tree-limited/{service}/compare/v{prod}...v{preprod})
-  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) PR title
-  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) PR title
+  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
+  PR title
+  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
+  PR title
 
 - [{service2}](...)
   ...
 
 ## Unrelated PRs approval:
 - [ ] @author1 approved
-  [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr})
+  [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr}) `branch-name`
+  PR title
 
 - [ ] @author2 approved
-  [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr})
-  [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr})
+  [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr}) `branch-name`
+  PR title
+  [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr}) `branch-name`
+  PR title
 ```
 
 Also add unrelated PR authors as **GitHub reviewers**:
@@ -167,6 +210,7 @@ When promoting from one hotfix to another on the same base:
 
 ## Notes
 
+- **Working directory:** use `repos/argocd-monorepo` (relative to project root) for all argocd-monorepo operations. If it doesn't exist, fall back to `/Users/antonkiian/projects/ytree/argocd-monorepo`
 - Tags in source repos use `v` prefix (e.g., `v130.0.33`)
 - PR title is just the release ID (e.g., `LUNA-R-923`) — not a conventional commit message
 - Jira tickets listed under "Promote to production" have no "fixes" prefix — just ticket link and summary
