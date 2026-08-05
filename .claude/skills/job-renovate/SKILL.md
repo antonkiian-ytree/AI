@@ -1,3 +1,10 @@
+---
+name: job-renovate
+description: >
+  Process open Renovate PRs for the y-tree-limited organization. Use when the user says
+  "process renovate PRs", "handle renovate", "review renovate PRs", or similar.
+---
+
 Process open Renovate PRs for the y-tree-limited organization.
 
 ## Steps
