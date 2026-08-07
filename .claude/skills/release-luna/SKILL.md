@@ -15,10 +15,21 @@ fully-documented PR with Jira links, compare links, and approval checklists.
 ## Input
 
 Parse the user's request for:
-- **Release ID** — e.g., `LUNA-R-923` (from Jira release)
-- **Services to promote** — service names with preprod and production tags
+- **Services to promote** — service names with target tags
+- **Jira release link or ID** — e.g., `LUNA-R-923` (optional)
 
-If missing, check recent Jira releases or ask the user.
+### Before doing anything, determine the release type:
+
+1. **If the user provides a Jira release ID or link** → this is a **versioned release** (`LUNA-R-{NNN}`)
+2. **If the user says "no release ticket"** or does not provide one → **ask the user**:
+   "Do we have a prepared Jira release for this? If yes, provide the release ID or link."
+3. Based on the answer:
+   - **Yes, there is a Jira release** → proceed as a versioned release (`LUNA-R-{NNN}`)
+   - **No prepared release** → this is a **content-based release** — derive the release name from the
+     content of the changes (e.g., `LUNA-RELEASE-FIX` for bug fixes, `LUNA-RELEASE-FEATURE` for features).
+     Use `LUNA-RELEASE-FIX` as the default when the content is primarily fixes.
+
+**Do NOT proceed to any preparation steps until the release type is determined.**
 
 ## Pre-flight
 
@@ -32,6 +43,8 @@ git checkout main && git pull origin main
 
 ### 1. Determine the release ID
 
+**For versioned releases (`LUNA-R-{NNN}`):**
+
 Find the next release number by checking recent merged release PRs:
 
 ```bash
@@ -40,7 +53,15 @@ gh pr list --state merged --limit 5 --search "LUNA-R" --json number,title
 
 If the user provides a release ID, use it. Otherwise, increment from the latest.
 
+**For content-based releases:**
+
+Use the content-derived name (e.g., `LUNA-RELEASE-FIX`). No need to check merged PRs for numbering.
+
 ### 2. Fetch Jira release info
+
+**Skip this step for content-based releases** (no Jira fixVersion exists).
+
+**For versioned releases only:**
 
 Query the Jira release report for linked tickets:
 
@@ -62,7 +83,8 @@ Subtasks are listed under their parent in the "Promote to production" section (s
 
 ```bash
 git checkout main && git pull origin main
-git checkout -b release/LUNA-R-{NNN}
+git checkout -b release/{RELEASE_ID}
+# e.g., release/LUNA-R-924 or release/LUNA-RELEASE-FIX
 ```
 
 For each service, verify current tags match expectations, then update
@@ -122,17 +144,17 @@ Group unrelated PRs by author for the approval checklist.
 
 ```bash
 git add <changed files>
-git commit -m "LUNA-R-{NNN}"
-git push -u origin release/LUNA-R-{NNN}
+git commit -m "{RELEASE_ID}"
+git push -u origin release/{RELEASE_ID}
 ```
 
 ### 7. Create PR
 
-**Branch:** `release/LUNA-R-{NNN}` (no extra info — just the release ID)
+**Branch:** `release/{RELEASE_ID}` (no extra info — just the release ID)
 
-**Title:** `LUNA-R-{NNN}`
+**Title:** `{RELEASE_ID}`
 
-**Body format:**
+**Body format for versioned releases (`LUNA-R-{NNN}`):**
 
 ```markdown
 [LUNA-R-{NNN}](https://yofiworld.atlassian.net/projects/LUNA/versions/{versionId}/tab/release-report-all-issues)
@@ -167,6 +189,27 @@ git push -u origin release/LUNA-R-{NNN}
   [{repo}#{pr}](https://github.com/y-tree-limited/{repo}/pull/{pr}) `branch-name`
   PR title
 ```
+
+**Body format for content-based releases (e.g., `LUNA-RELEASE-FIX`):**
+
+```markdown
+# Release Description:
+
+## Promote to production:
+- [LUNA-XXXX](https://yofiworld.atlassian.net/browse/LUNA-XXXX) Ticket summary
+- [LUNA-YYYY](https://yofiworld.atlassian.net/browse/LUNA-YYYY) Ticket summary
+
+## Compare Changes
+- [{service}](https://github.com/y-tree-limited/{service}/compare/v{prod}...v{preprod})
+  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
+  PR title
+
+## Unrelated PRs approval:
+...
+```
+
+Note: content-based releases have no Jira release link at the top. The "Promote to production"
+section lists tickets found in the PR titles/branches. No subtask fetching is needed.
 
 Also add unrelated PR authors as **GitHub reviewers**:
 
@@ -211,7 +254,9 @@ When promoting from one hotfix to another on the same base:
 ## Notes
 
 - **Working directory:** use `repos/argocd-monorepo` (relative to project root) for all argocd-monorepo operations. If it doesn't exist, fall back to `/Users/antonkiian/projects/ytree/argocd-monorepo`
-- Tags in source repos use `v` prefix (e.g., `v130.0.33`)
-- PR title is just the release ID (e.g., `LUNA-R-923`) — not a conventional commit message
+- **Tag formats differ by context:**
+  - **Source repos** (GitHub tags, compare links): use `v` prefix (e.g., `v130.0.33`)
+  - **Production `app-values.yaml`**: use **no** `v` prefix (e.g., `tag: 130.0.33`). When bumping the production image tag, strip the `v` prefix from the preprod/source tag.
+- PR title is just the release ID (e.g., `LUNA-R-923` or `LUNA-RELEASE-FIX`) — not a conventional commit message
 - Jira tickets listed under "Promote to production" have no "fixes" prefix — just ticket link and summary
 - Jira cloud ID: `3e0004f3-0133-4a66-85f9-a2ce7b5ba86d` (yofiworld.atlassian.net)
