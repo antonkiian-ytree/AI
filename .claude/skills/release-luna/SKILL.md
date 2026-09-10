@@ -31,6 +31,25 @@ Parse the user's request for:
 
 **Do NOT proceed to any preparation steps until the release type is determined.**
 
+### After determining the release type, propose services and get confirmation:
+
+**Do NOT assume which services to promote.** Instead:
+
+1. Fetch the Jira tickets for the release (step 2 below)
+2. Search for related PRs across LUNA-owned services by checking preprod vs production tag diffs
+   and scanning commit messages/PR titles for the release ticket keys.
+   **Also check `cm-frontend-server-versions`** — compare preprod vs production `app-values.yaml`
+   for any `mf-*` version diffs, then scan the corresponding `mf-*` repo commits for release ticket keys
+3. Present a summary to the user **before making any changes**:
+   ```
+   Release LUNA-R-{NNN} — proposed services:
+   - ms-foo: 1.2.3 → 1.2.7 (contains LUNA-XXXX in PRs #42, #45)
+   - ms-bar: 3.0.1 → 3.0.4 (contains LUNA-XXXX in PR #88)
+
+   Shall I proceed with these, or add/remove any services?
+   ```
+4. Only proceed to tag bumps, commits, and PR creation **after the user confirms**.
+
 ## Pre-flight
 
 Before making any changes in the argocd-monorepo, **always** switch to the main branch and pull latest:
@@ -45,13 +64,19 @@ git checkout main && git pull origin main
 
 **For versioned releases (`LUNA-R-{NNN}`):**
 
-Find the next release number by checking recent merged release PRs:
+The release ID **must** come from the Jira version name — never guess or increment from merged PRs.
 
-```bash
-gh pr list --state merged --limit 5 --search "LUNA-R" --json number,title
+When the user provides a Jira release link containing a version ID (e.g., `.../versions/34649/...`),
+extract the version ID and fetch the version name via the Atlassian MCP:
+
+```
+JQL: fixVersion = {versionId}
+Fields: ["fixVersions"]
+MaxResults: 1
 ```
 
-If the user provides a release ID, use it. Otherwise, increment from the latest.
+Read the `name` from the `fixVersions` array on the first returned issue (e.g., `LUNA-R-962`).
+Use it exactly as-is.
 
 **For content-based releases:**
 
@@ -109,7 +134,9 @@ gh pr view {number} --repo y-tree-limited/{service} \
   --jq '"\(.number) | \(.title) | \(.author.login) | \(.mergedAt) | \(.headRefName)"'
 ```
 
-**Order PRs by merged timestamp (oldest first).**
+**Order PRs by the date they were merged to the main branch (oldest first).** This is the canonical
+ordering for Compare Changes — it reflects the sequence in which changes landed on main, regardless
+of cherry-pick or hotfix timing.
 
 Run compare gathering in parallel (use Agent tool) for speed.
 
@@ -134,17 +161,25 @@ v0.2.27 = #359 (VG-6485)    ← unrelated, but sandwiched
 v0.2.28 = #358 (LUNA-6498)  ← release ← must promote to v0.2.28, #359 included
 ```
 
-For each PR in the compare range:
-- **Related to release** — PR title or branch name contains a Jira ticket key from the release
-- **Unrelated** — everything else (deps updates, refactors, etc.)
+For each PR in the compare range, classify and prefix with a marker:
+- **🆕** — PR is part of this release (title or branch contains a Jira ticket key from the release)
+- **🆕⚠️** — PR is unrelated but included in the release (sandwiched between release PRs, cannot be skipped)
+- **✅** — PR is already released (only in hotfix → main tag scenarios, see below)
 
-Group unrelated PRs by author for the approval checklist.
+These markers apply to **all** releases (hotfix and non-hotfix alike).
+
+Group 🆕⚠️ unrelated PRs by author for the approval checklist. 🆕 PRs never go under "Unrelated PRs approval".
 
 ### 6. Commit and push
 
 ```bash
 git add <changed files>
-git commit -m "{RELEASE_ID}"
+git commit -m "$(cat <<'EOF'
+{RELEASE_ID}
+
+Co-Authored-By: Atlas <atlas@users.noreply.github.com>
+EOF
+)"
 git push -u origin release/{RELEASE_ID}
 ```
 
@@ -170,10 +205,10 @@ git push -u origin release/{RELEASE_ID}
 
 ## Compare Changes
 - [{service}](https://github.com/y-tree-limited/{service}/compare/v{prod}...v{preprod})
-  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
-  PR title
-  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
-  PR title
+  🆕 [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
+  PR title (release PR)
+  🆕⚠️ [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
+  PR title (unrelated, sandwiched)
 
 - [{service2}](...)
   ...
@@ -201,7 +236,7 @@ git push -u origin release/{RELEASE_ID}
 
 ## Compare Changes
 - [{service}](https://github.com/y-tree-limited/{service}/compare/v{prod}...v{preprod})
-  [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
+  🆕 [{service}#{pr}](https://github.com/y-tree-limited/{service}/pull/{pr}) `branch-name`
   PR title
 
 ## Unrelated PRs approval:
@@ -231,14 +266,15 @@ When production runs a hotfix tag and the new tag is a main-branch tag:
 
 1. Compare hotfix base to hotfix tag (`v117.1.0...v117.1.0-hotfix-...`) → PRs already released
 2. Compare hotfix base to new tag (`v117.1.0...v117.3.0`) → PRs on main
-3. Cross-reference:
+3. Cross-reference and prefix each PR in Compare Changes:
    - PRs in both = ✅ already released
-   - PRs only on main = ❌ not released
-4. Prefix each PR in Compare Changes with ✅ or ❌
-5. ✅ PRs do NOT go under "Unrelated PRs approval" — only ❌ unrelated PRs need approval
+   - PRs only on main AND part of this release = 🆕 new in this release
+   - PRs only on main AND NOT part of this release = 🆕⚠️ unrelated (sandwiched)
+4. ✅ PRs do NOT go under "Unrelated PRs approval" — only 🆕⚠️ unrelated PRs need approval
+5. 🆕 PRs do NOT go under "Unrelated PRs approval" — they are the reason for the release
 6. Check for hotfix-only PRs by comparing preprod tag vs production hotfix tag directly
    (`v{preprod_tag}...v{hotfix_tag}`). Flag lost PRs with ⚠️ note including each PR's title
-7. When a PR and its revert are both in range, list as separate lines (both ❌).
+7. When a PR and its revert are both in range, list as separate lines (both 🆕⚠️).
    Revert line: `[repo@short-sha](commit-url)` with title `Revert <original title>`
 8. Use full compare link `hotfix-tag...new-tag` for the service compare URL
 
@@ -247,9 +283,24 @@ When production runs a hotfix tag and the new tag is a main-branch tag:
 When promoting from one hotfix to another on the same base:
 
 1. Compare old hotfix tag to new hotfix tag directly
-2. Do NOT add ✅/❌ marks — all PRs are new
+2. Do NOT add ✅/🆕/🆕⚠️ marks — all PRs are new
 3. Do NOT add "Hotfix-only PRs not in preprod" warning
 4. List PRs plainly in the Compare Changes sub-list
+
+### 8. Prepare Slack draft
+
+After the PR is created, prepare a draft message in **#squad_luna-release** (`C0679L7F59A`):
+
+```
+@luna :large_green_circle: RELEASE
+<{jira_release_url}|{RELEASE_ID}>
+please review {pr_url}
+```
+
+- For **versioned releases**: `{RELEASE_ID}` links to the Jira release page
+- For **content-based releases**: `{RELEASE_ID}` is plain text (no Jira link)
+- Use Slack's native link format: `<url|text>`
+- Use `slack_send_message_draft` tool to create the draft (not send)
 
 ## Notes
 
