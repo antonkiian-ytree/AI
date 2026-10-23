@@ -22,19 +22,64 @@ git checkout main && git pull origin main
 
 ## Input
 
-The user provides a table of services with their preprod and production tags, e.g.:
+The user either:
+1. Provides a table of services with their preprod and production tags, e.g.:
+   ```
+   │ ms-asset │ 130.0.33 │ 130.0.31 │
+   ```
+   Parse each row to extract: **service name**, **preprod tag** (target), **production tag** (current).
 
-```
-│ ms-asset │ 130.0.33 │ 130.0.31 │
+2. Asks to auto-discover eligible services from the argocd-monorepo (e.g., "do it from the repo",
+   "find them yourself"). In this case, follow the **Auto-Discovery** workflow below.
+
+## Auto-Discovery
+
+When the user does not provide a table, discover eligible services automatically:
+
+### 1. Identify squad services
+
+Find all LUNA services by searching for the ownership label in production app-values:
+
+```bash
+grep -rl 'owning_team: "luna"' environments/production/*/app-values.yaml \
+  | sed 's|environments/production/||;s|/app-values.yaml||' | sort
 ```
 
-Parse each row to extract: **service name**, **preprod tag** (target), **production tag** (current).
+### 2. Find tag differences
+
+For each LUNA service, compare preprod vs production tags:
+
+```bash
+for svc in <luna_services>; do
+  preprod_tag=$(grep -E '^\s+tag:' "environments/preprod/$svc/app-values.yaml" | head -1 | awk '{print $2}' | tr -d '"')
+  prod_tag=$(grep -E '^\s+tag:' "environments/production/$svc/app-values.yaml" | head -1 | awk '{print $2}' | tr -d '"')
+  if [ "$preprod_tag" != "$prod_tag" ]; then echo "$svc | $preprod_tag | $prod_tag"; fi
+done
+```
+
+### 3. Filter candidates
+
+Exclude services where:
+- Preprod tag is a **SNAPSHOT** (contains `SNAPSHOT-`)
+- Production tag is a **hotfix** (contains `-hotfix-`)
+
+### 4. Verify ytree-admin-only commits
+
+For each remaining candidate, check commit authors between the two tags (use Agent tool for parallel):
+
+```bash
+gh api repos/y-tree-limited/{service}/compare/v{prod_tag}...v{preprod_tag} \
+  --jq '.commits | map(.author.login) | unique | .[]'
+```
+
+Only include services where **every** commit author is `ytree-admin`. If no services qualify, inform
+the user that there are no eligible services for a renovation release and show the exclusion reasons.
 
 ## Workflow
 
 ### 1. Verify tags
 
-For each service, confirm current production and preprod tags match the user's table:
+If the user provided a table, confirm current production and preprod tags match:
 
 ```bash
 for svc in <services>; do
@@ -44,6 +89,8 @@ done
 ```
 
 If any tag doesn't match, **stop and report** the discrepancy.
+
+If using auto-discovery, tags are already verified from the repo — skip this step.
 
 ### 2. Create branch and bump tags
 

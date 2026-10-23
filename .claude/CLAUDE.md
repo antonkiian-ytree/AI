@@ -18,6 +18,17 @@ This is an **ops automation repo** — a collection of Claude Code skills and co
 - **`repos/argocd-monorepo/`** — Git-ignored local clone of `y-tree-limited/argocd-monorepo`, used by release skills for tag bumps. If missing, skills fall back to `/Users/antonkiian/projects/ytree/argocd-monorepo`.
 - **`.claude/settings.local.json`** — Pre-approved permissions for common `gh` commands, Jira search, and Slack reads.
 
+## Atlas Workspace
+
+The primary development workspace is at `/Users/antonkiian/projects/ytree/atlas-workspace/.claude/worktrees/atlas-team-squad-luna/`. It contains:
+- **`workspace.yaml`** — squad-luna's owned repos (with roles: project/reference/knowledge) and cross-repo relationships
+- **`bin/atlas`** — CLI tooling for PR creation, snapshot deploys, worktree management, workflow runs
+- **`knowledge/`** — backend/frontend standards repos (read-only context)
+
+When skills in this repo need to create branches or PRs in squad-luna service repos, use the atlas workspace tooling and conventions (e.g., `bin/atlas pr create`, `bin/atlas wf run`). See `snapshot-deploy.md` and other references under `.claude/skills/deploy/references/` for deploy flows.
+
+**Maintenance:** Refresh the atlas workspace every weekend by running `bin/atlas workspace refresh` from the worktree directory. This keeps repo clones, knowledge bases, and the repo index up to date.
+
 ## Key External Systems
 
 - **GitHub org:** `y-tree-limited` — all service repos and argocd-monorepo live here

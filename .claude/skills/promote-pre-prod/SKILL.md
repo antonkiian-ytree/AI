@@ -14,10 +14,30 @@ in argocd-monorepo. The workflow auto-creates a PR, and `auto-approve-preprod.ya
 ## Input
 
 Parse the user's request for:
-- **Service name** — e.g., `ms-cpd`, `ms-asset`
-- **New tag** — the image tag to set (e.g., `5.1.130`, `SNAPSHOT-4478cae...`)
+- **Service name** — e.g., `ms-cpd`, `ms-asset`, `mf-billing`. Both `ms-*` and `mf-*` services use the same workflow.
+- **New tag** — the image tag to set (e.g., `5.1.130`, `0.1.65`, `SNAPSHOT-4478cae...`)
 
-If any are missing, ask the user.
+If the service name is missing, ask the user.
+
+If the tag is missing, look it up from the **development** environment in argocd-monorepo:
+
+```bash
+grep 'tag:' /Users/antonkiian/projects/ytree/argocd-monorepo/environments/development/{service}/app-values.yaml
+```
+
+Propose the dev tag to the user for confirmation before proceeding (e.g., "ms-cpd is on `5.1.158` in dev — shall I promote that to preprod?").
+
+## Pre-flight: Check current preprod version
+
+Before triggering the workflow, check the current preprod tag:
+
+- For `ms-*` services: `grep 'tag:' .../environments/preprod/{service}/app-values.yaml`
+- For `mf-*` services: `grep '{service}' .../environments/preprod/cm-frontend-server-versions/app-values.yaml`
+
+**If the current preprod version is a SNAPSHOT**, warn the user and ask for confirmation before proceeding:
+> "⚠️ ms-cpd is currently on `SNAPSHOT-abc123...` in preprod. Are you sure you want to overwrite it with `{new_tag}`?"
+
+Only proceed after the user confirms. This prevents accidentally replacing an in-progress SNAPSHOT deployment.
 
 ## Workflow
 
