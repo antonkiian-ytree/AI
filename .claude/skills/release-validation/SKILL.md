@@ -80,9 +80,24 @@ Present results as a structured report:
 |---------|------|----|--------|
 | {service} | {old_tag} | {new_tag} | Tag exists / MISSING |
 
-### {service} ({compare range}) — OK / ISSUE
-{N} commits — summary of what's included and whether all are accounted for.
+### {service} ([v{old}...v{new}](https://github.com/y-tree-limited/{service}/compare/v{old}...v{new})) — OK / ISSUE
+{N} commits, all covered by the description / {M} unaccounted.
 
+**{TICKET-KEY}:**
+- {commit title without "(#N)"} [{service}#{N}](https://github.com/y-tree-limited/{service}/pull/{N})
+- {commit title} [{service}#{N}](https://github.com/y-tree-limited/{service}/pull/{N})
+{optional note, e.g. "The PR flags these as needing Luna's confirmation."}
+
+**Renovate:**
+- {commit title} [{service}#{N}](https://github.com/y-tree-limited/{service}/pull/{N})
+{count, and whether it matches the PR description}
+```
+
+Group commits by Jira ticket (subtasks under their parent, named in the heading), then Renovate/ytree-admin
+bumps, then any unaccounted commits. List **every** commit as its own bullet with the full commit title and a
+link to its PR — never collapse them into a bare list of PR numbers.
+
+```
 ### Verdict
 All tags exist, all commits accounted for, no undocumented changes. LGTM.
 — or —
@@ -96,6 +111,11 @@ If the user asks to add a comment, post the validation report as a PR comment:
 ```bash
 gh pr comment {number} --repo y-tree-limited/argocd-monorepo --body "{report}"
 ```
+
+**Never write a bare `#{N}` for a source-repo PR.** In an argocd-monorepo comment, `#744` auto-links to
+argocd-monorepo PR #744 (an unrelated promote PR), not the service PR. Use an explicit markdown link
+`[{service}#{N}](https://github.com/y-tree-limited/{service}/pull/{N})` (a short `{service}#{N}` without the link
+does not auto-link). This applies to everything posted to GitHub: report comments, review/approval bodies, and edits.
 
 ## Checks performed
 
